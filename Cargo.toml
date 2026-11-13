@@ -1,0 +1,24 @@
+[package]
+name = "sios-bootloader"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+uefi = {
+    version = "0.35",
+    features = [
+        "alloc",
+        "global_allocator",
+        "panic_handler",
+    ]
+}
+
+[features]
+default = []
+chainload-test = []
+
+
+[[bin]]
+name = "chainload_test"
+path = "src/bin/chainload_test.rs"
+required-features = ["chainload-test"]
