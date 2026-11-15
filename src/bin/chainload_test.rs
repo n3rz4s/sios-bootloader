@@ -4,7 +4,6 @@
 use core::fmt::Write;
 use uefi::{Status, boot, entry, system};
 
-
 fn log(message: &str) {
     system::with_stdout(|stdout| {
         writeln!(stdout, "{}", message).unwrap();
@@ -46,6 +45,6 @@ fn main() -> Status {
     boot::stall(600_000);
     log("Goodbye.");
     boot::stall(1_000_000);
-    
+
     Status::SUCCESS
 }

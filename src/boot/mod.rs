@@ -4,6 +4,7 @@ pub mod entry;
 pub mod error;
 pub mod manager;
 pub mod storage;
+pub mod x86_64;
 
 pub use config::BootConfig;
 
@@ -22,3 +23,8 @@ pub use storage::{
 };
 
 pub use efi::{EfiLoadError, EfiLoadResult, EfiLoadStage, chainload};
+
+pub use x86_64::linux::{
+    BootProtocolVersion, KernelImageError, KernelPayloadFormat, LinuxImageKind, LinuxKernelImage,
+    SetupHeader,
+};

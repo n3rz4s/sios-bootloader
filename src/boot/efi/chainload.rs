@@ -22,6 +22,13 @@ pub fn chainload(storage: &mut StorageManager, target: &EfiTarget) -> EfiLoadRes
                     continue;
                 }
 
+                if metadata.size() == 0 {
+                    return Err(EfiLoadError::new(
+                        EfiLoadStage::ResolveVolume,
+                        Status::BAD_BUFFER_SIZE,
+                    ));
+                }
+
                 if matching_volume.is_some() {
                     return Err(EfiLoadError::new(
                         EfiLoadStage::ResolveVolume,
@@ -37,9 +44,13 @@ pub fn chainload(storage: &mut StorageManager, target: &EfiTarget) -> EfiLoadRes
             }
 
             Err(error) => {
-                scan_error = Some(error.status());
+                scan_error.get_or_insert(error.status());
             }
         }
+    }
+
+    if let Some(status) = scan_error {
+        return Err(EfiLoadError::new(EfiLoadStage::ResolveVolume, status));
     }
 
     let volume_index = matching_volume

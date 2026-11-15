@@ -1,9 +1,10 @@
+
 # SIOS Bootloader
 
 <p align="center">
   <strong>A modern UEFI bootloader written entirely in Rust.</strong>
   <br>
-  <em>Built from the ground up with a custom graphics renderer, declarative UI engine, storage subsystem, and EFI image loader.</em>
+  <em>Built from the ground up with a custom graphics renderer, declarative UI engine, storage subsystem, EFI image loader, and native Linux boot infrastructure.</em>
 </p>
 
 <p align="center">
@@ -22,9 +23,9 @@
 
 Unlike traditional bootloaders that rely on external graphical interfaces or existing boot management frameworks, SIOS Bootloader is being developed around its own internal architecture.
 
-The project provides a custom graphical rendering pipeline, a lightweight UI engine, firmware interaction abstractions, storage discovery, and EFI executable loading.
+The project provides a custom graphical rendering pipeline, a lightweight UI engine, firmware interaction abstractions, storage discovery, EFI executable loading, and architecture-specific Linux boot infrastructure.
 
-The primary objective is to build a modular and extensible boot environment capable of eventually supporting both EFI chainloading and native Linux kernel booting.
+The primary objective is to build a modular and extensible boot environment capable of supporting both EFI chainloading and native Linux kernel booting.
 
 The entire core is written in Rust using a `no_std` environment.
 
@@ -63,6 +64,20 @@ SIOS Bootloader includes an EFI executable loading subsystem.
 - Load options support.
 - EFI chainloading.
 - Structured loading errors with execution stages.
+
+### Linux Kernel Image Parser
+
+SIOS Bootloader includes an architecture-specific Linux kernel image parsing subsystem.
+
+The implementation is located under `boot/x86_64/linux/`, separating Linux-specific functionality from the general boot infrastructure.
+
+- x86_64-specific Linux boot subsystem.
+- Linux kernel image representation.
+- Kernel image header parsing.
+- Structured parsing errors.
+- Foundation for Linux Boot Protocol implementation and native kernel loading.
+
+The parser is implemented and serves as the first completed component of the native Linux boot pipeline.
 
 ### Graphics Engine
 
@@ -121,26 +136,28 @@ Built-in widgets:
 
 ## Architecture
 
-The project is organized into independent subsystems to keep firmware interaction, graphics, UI logic, and boot management separated.
+The project is organized into independent subsystems to keep firmware interaction, graphics, UI logic, storage, and architecture-specific boot functionality separated.
+
+### Source Structure
 
 ```text
 src/
-├── main.rs
-├── lib.rs
-│
-├── runtime/
-│   └── mod.rs
-│
-├── firmware/
-│   ├── mod.rs
-│   └── protocols.rs
+├── bin/
+│   └── chainload_test.rs
 │
 ├── boot/
-│   ├── mod.rs
 │   ├── config.rs
-│   ├── manager.rs
 │   ├── entry.rs
 │   ├── error.rs
+│   ├── manager.rs
+│   ├── mod.rs
+│   │
+│   ├── efi/
+│   │   ├── chainload.rs
+│   │   ├── error.rs
+│   │   ├── image.rs
+│   │   ├── mod.rs
+│   │   └── path.rs
 │   │
 │   ├── storage/
 │   │   ├── device.rs
@@ -148,14 +165,21 @@ src/
 │   │   ├── error.rs
 │   │   ├── gpt.rs
 │   │   ├── manager.rs
+│   │   ├── mod.rs
 │   │   ├── protocols.rs
 │   │   └── volume.rs
 │   │
-│   └── efi/
-│       ├── chainload.rs
-│       ├── error.rs
-│       ├── image.rs
-│       └── path.rs
+│   └── x86_64/
+│       ├── mod.rs
+│       └── linux/
+│           ├── error.rs
+│           ├── header.rs
+│           ├── image.rs
+│           └── mod.rs
+│
+├── firmware/
+│   ├── mod.rs
+│   └── protocols.rs
 │
 ├── graphics/
 │   ├── color.rs
@@ -163,12 +187,21 @@ src/
 │   ├── font.rs
 │   ├── framebuffer.rs
 │   ├── image.rs
+│   ├── mod.rs
 │   ├── renderer.rs
 │   └── text.rs
+│
+├── input/
+│   ├── keyboard.rs
+│   └── mod.rs
+│
+├── runtime/
+│   └── mod.rs
 │
 ├── ui/
 │   ├── element.rs
 │   ├── layout.rs
+│   ├── mod.rs
 │   ├── paint.rs
 │   ├── style.rs
 │   ├── tree.rs
@@ -177,14 +210,36 @@ src/
 │       ├── button.rs
 │       ├── label.rs
 │       ├── list.rs
+│       ├── mod.rs
 │       └── panel.rs
 │
-├── input/
-│   └── keyboard.rs
-│
-└── bin/
-    └── chainload_test.rs
+├── lib.rs
+└── main.rs
 ```
+
+### Boot Architecture
+
+The boot subsystem is divided into independent functional and architecture-specific modules.
+
+**`boot/efi/`**
+
+Responsible for EFI executable loading and chainloading through UEFI Boot Services.
+
+**`boot/storage/`**
+
+Responsible for storage discovery, block device access, filesystem volumes, GPT parsing, and Device Path handling.
+
+**`boot/x86_64/`**
+
+Contains functionality specific to the x86_64 architecture.
+
+**`boot/x86_64/linux/`**
+
+Contains the Linux-specific boot implementation for x86_64.
+
+This separation allows architecture-specific boot functionality to evolve independently without introducing unnecessary dependencies into the general boot management infrastructure.
+
+The architecture is designed to accommodate additional platform-specific implementations in the future.
 
 ## Design Philosophy
 
@@ -193,6 +248,8 @@ src/
 Each subsystem has its own responsibilities and public interfaces.
 
 The graphics renderer does not depend on the UI tree, the UI tree does not directly interact with UEFI protocols, and boot management does not need to know how individual widgets are rendered.
+
+Architecture-specific boot implementations are also isolated from the general boot infrastructure.
 
 ### 2. No Standard Library
 
@@ -212,6 +269,12 @@ The rendering pipeline supports region-based painting, allowing individual UI el
 
 This is particularly important in firmware environments where rendering performance and unnecessary framebuffer operations matter.
 
+### 5. Architecture Isolation
+
+Architecture-specific implementations are kept separate from the general boot infrastructure.
+
+This allows platform-dependent functionality, such as Linux kernel loading, to be implemented without coupling it to unrelated boot subsystems.
+
 ---
 
 ## Technology Stack
@@ -228,6 +291,8 @@ This is particularly important in firmware environments where rendering performa
 | Storage | UEFI protocols |
 | Partition scheme | GPT |
 | Input | UEFI keyboard |
+| Target architecture | x86_64 |
+| Linux support | Linux kernel image parsing |
 
 ## Development Status
 
@@ -246,6 +311,7 @@ The following table distinguishes existing implementations from planned function
 | Device Path parsing | Implemented |
 | EFI image loading | Implemented |
 | EFI chainloading | Implemented |
+| Linux kernel image parser (x86_64) | Implemented |
 | Custom framebuffer renderer | Implemented |
 | Graphics and text rendering | Implemented |
 | UI tree | Implemented |
@@ -253,13 +319,14 @@ The following table distinguishes existing implementations from planned function
 | Widget system | Implemented |
 | Keyboard navigation | Implemented |
 | Dirty-region rendering | Implemented |
-| Native Linux kernel loader | Planned |
-| Linux boot protocol | Planned |
+| Linux Boot Protocol | Planned |
 | Physical memory allocator | Planned |
+| Kernel physical memory placement | Planned |
 | Initrd loading | Planned |
 | UEFI Memory Map to E820 | Planned |
 | Page table construction | Planned |
 | ExitBootServices integration | Planned |
+| Native Linux kernel handoff | Planned |
 
 *Implementation status refers to the current development snapshot and does not imply production readiness.*
 
@@ -292,12 +359,12 @@ The long-term goal is to turn SIOS Bootloader into a complete native boot enviro
 - [x] Keyboard navigation
 - [x] Partial framebuffer updates
 
-### Phase 3 - Native Linux Boot
+### Phase 3 - Native Linux Boot (x86_64)
 
-- [ ] Linux kernel image parsing
+- [x] Linux kernel image parsing
 - [ ] Linux boot protocol implementation
-- [ ] Kernel physical memory placement
 - [ ] Physical page allocator
+- [ ] Kernel physical memory placement
 - [ ] Initrd loading
 - [ ] Kernel command-line support
 - [ ] UEFI Memory Map processing

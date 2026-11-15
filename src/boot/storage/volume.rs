@@ -282,14 +282,36 @@ impl StorageVolume {
             }
         };
 
+        file.set_position(0).map_err(|error| {
+            StorageFailure::new(Some(self.handle), StorageStage::ReadFile, error.status())
+        })?;
+
+        let initial_position = file.get_position().map_err(|error| {
+            StorageFailure::new(Some(self.handle), StorageStage::ReadFile, error.status())
+        })?;
+
+        if initial_position != 0 {
+            return Err(StorageFailure::new(
+                Some(self.handle),
+                StorageStage::ReadFile,
+                Status::DEVICE_ERROR,
+            ));
+        }
+
+        const READ_CHUNK_SIZE: usize = 64 * 1024;
+
         let mut offset = 0;
 
         while offset < file_size {
-            let bytes_read = file.read(&mut buffer[offset..]).map_err(|error| {
+            let end = offset.saturating_add(READ_CHUNK_SIZE).min(file_size);
+
+            let requested = end - offset;
+
+            let bytes_read = file.read(&mut buffer[offset..end]).map_err(|error| {
                 StorageFailure::new(Some(self.handle), StorageStage::ReadFile, error.status())
             })?;
 
-            if bytes_read == 0 {
+            if bytes_read == 0 || bytes_read > requested {
                 return Err(StorageFailure::new(
                     Some(self.handle),
                     StorageStage::ReadFile,
@@ -298,6 +320,18 @@ impl StorageVolume {
             }
 
             offset += bytes_read;
+
+            let current_position = file.get_position().map_err(|error| {
+                StorageFailure::new(Some(self.handle), StorageStage::ReadFile, error.status())
+            })?;
+
+            if current_position != offset as u64 {
+                return Err(StorageFailure::new(
+                    Some(self.handle),
+                    StorageStage::ReadFile,
+                    Status::DEVICE_ERROR,
+                ));
+            }
         }
 
         Ok(buffer)

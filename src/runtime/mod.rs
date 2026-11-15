@@ -5,7 +5,9 @@ use core::{cell::RefCell, fmt::Write};
 use uefi::{Status, boot, helpers, proto::console::text::Input, system};
 
 use crate::{
-    boot::{BootConfig, BootManager, BootTarget, StorageManager},
+    boot::{
+        BootConfig, BootManager, BootTarget, LinuxKernelImage, LinuxNativeTarget, StorageManager,
+    },
     firmware,
     graphics::{Color, FrameBuffer, Rect, Renderer},
     input::{InputEvent, read_event},
@@ -230,6 +232,87 @@ fn update_footer_text(ui: &mut BootUi, text: &str) -> Result<bool, Status> {
     Ok(true)
 }
 
+fn inspect_native_kernel(storage: &mut StorageManager, target: &LinuxNativeTarget) -> String {
+    const MAX_KERNEL_SIZE: usize = 128 * 1024 * 1024;
+
+    let path = target.kernel_path().as_str();
+
+    let mut matching_volume = None;
+    let mut scan_error = None;
+
+    for (index, volume) in storage.volumes_mut().iter_mut().enumerate() {
+        match volume.metadata(path) {
+            Ok(metadata) => {
+                if metadata.is_directory() {
+                    continue;
+                }
+
+                if metadata.size() == 0 {
+                    return String::from("Kernel image is empty.");
+                }
+
+                if matching_volume.is_some() {
+                    return String::from("Kernel path is ambiguous.");
+                }
+
+                matching_volume = Some(index);
+            }
+
+            Err(error) if error.status() == Status::NOT_FOUND => {
+                continue;
+            }
+
+            Err(error) => {
+                scan_error.get_or_insert(error.status());
+            }
+        }
+    }
+
+    if let Some(status) = scan_error {
+        return format!("Kernel discovery failed: {:?}", status,);
+    }
+
+    let Some(volume_index) = matching_volume else {
+        return format!("Kernel not found: {}", path,);
+    };
+
+    let Some(volume) = storage.volume_mut(volume_index) else {
+        return String::from("Invalid storage volume.");
+    };
+
+    let kernel_bytes = match volume.read_file(path, MAX_KERNEL_SIZE) {
+        Ok(bytes) => bytes,
+
+        Err(error) => {
+            return format!("Kernel read failed: {:?}", error.status(),);
+        }
+    };
+
+    let image = match LinuxKernelImage::parse(&kernel_bytes) {
+        Ok(image) => image,
+
+        Err(error) => {
+            return format!("Kernel parse failed: {:?}", error,);
+        }
+    };
+
+    if let Err(error) = image.validate_native_x86_64() {
+        return format!("Unsupported Linux kernel: {:?}", error,);
+    }
+
+    let header = image.header();
+
+    let version = header.protocol_version();
+
+    format!(
+        "Kernel OK: {:?}, x86_64, protocol {}.{}, payload {:?}",
+        header.image_kind(),
+        version.major(),
+        version.minor(),
+        image.payload_format(),
+    )
+}
+
 fn handle_input_event(
     event: InputEvent,
     ui: &mut BootUi,
@@ -279,31 +362,20 @@ fn handle_input_event(
             let selected_target = ui.manager.selected_entry().target().clone();
 
             let message = match selected_target {
-                BootTarget::LinuxNative(_) => {
-                    format!(
-                        "{}: native Linux loader is not implemented yet.",
-                        selected_name,
-                    )
-                }
+                BootTarget::LinuxNative(target) => inspect_native_kernel(&mut ui._storage, &target),
 
                 BootTarget::LinuxEfiStub(target) | BootTarget::EfiChainload(target) => {
                     clear_text_console();
 
                     renderer.clear(Color::rgb(0, 0, 0));
 
-                    let result = crate::boot::efi::chainload(
-                        &mut ui._storage,
-                        &target,
-                    );
+                    let result = crate::boot::efi::chainload(&mut ui._storage, &target);
 
                     clear_text_console();
 
                     match result {
                         Ok(()) => {
-                            format!(
-                                "{} returned to SIOS.",
-                                selected_name,
-                            )
+                            format!("{} returned to SIOS.", selected_name,)
                         }
 
                         Err(error) => {
@@ -319,12 +391,7 @@ fn handle_input_event(
 
             update_footer_text(ui, &message)?;
 
-            render_ui(
-                renderer,
-                ui,
-                layout,
-            )
-            .map_err(|_| Status::ABORTED)?;
+            render_ui(renderer, ui, layout).map_err(|_| Status::ABORTED)?;
         }
 
         InputEvent::Cancel => {
@@ -392,32 +459,6 @@ pub fn run() -> Status {
             return status;
         }
     };
-
-    for volume in storage.volumes_mut() {
-        match volume.read_file("\\storage-test.txt", 4096) {
-            Ok(contents) => {
-                if contents.as_slice() != b"SIOS_STORAGE_TEST" {
-                    report_error("Storage test: invalid file contents.", Status::DEVICE_ERROR);
-
-                    return Status::DEVICE_ERROR;
-                }
-
-                break;
-            }
-
-            Err(error) if error.status() == Status::NOT_FOUND => {
-                continue;
-            }
-
-            Err(error) => {
-                let status = error.status();
-
-                report_error("Storage test: file read failed.", status);
-
-                return status;
-            }
-        }
-    }
 
     let mut gop = match firmware::open_graphics_output() {
         Ok(gop) => gop,
