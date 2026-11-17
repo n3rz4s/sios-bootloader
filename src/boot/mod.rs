@@ -25,6 +25,7 @@ pub use storage::{
 pub use efi::{EfiLoadError, EfiLoadResult, EfiLoadStage, chainload};
 
 pub use x86_64::linux::{
-    BootProtocolVersion, KernelImageError, KernelPayloadFormat, LinuxImageKind, LinuxKernelImage,
-    SetupHeader,
+    BootParams, BootParamsBuilder, BootParamsError, BootProtocolVersion, E820Entry, E820MemoryType,
+    EfiBootInfo, KernelCommandLine, KernelCommandLineError, KernelImageError, KernelPayloadFormat,
+    LinuxImageKind, LinuxKernelImage, SecureBootMode, SetupHeader,
 };

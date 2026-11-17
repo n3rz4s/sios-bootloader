@@ -79,9 +79,15 @@ pub struct SetupHeader {
 
     cmdline_size: Option<u32>,
 
+    hardware_subarch: Option<u32>,
+
+    hardware_subarch_data: Option<u64>,
+
     payload_offset: Option<u32>,
 
     payload_length: Option<u32>,
+
+    setup_data: Option<u64>,
 
     pref_address: Option<u64>,
 
@@ -247,6 +253,18 @@ impl SetupHeader {
             None
         };
 
+        let hardware_subarch = if protocol_version.at_least(2, 7) {
+            Some(read_u32(image, 0x23C).ok_or(KernelImageError::InvalidHeaderLength)?)
+        } else {
+            None
+        };
+
+        let hardware_subarch_data = if protocol_version.at_least(2, 7) {
+            Some(read_u64(image, 0x240).ok_or(KernelImageError::InvalidHeaderLength)?)
+        } else {
+            None
+        };
+
         let payload_offset = if protocol_version.at_least(2, 8) {
             Some(read_u32(image, 0x248).ok_or(KernelImageError::InvalidHeaderLength)?)
         } else {
@@ -255,6 +273,12 @@ impl SetupHeader {
 
         let payload_length = if protocol_version.at_least(2, 8) {
             Some(read_u32(image, 0x24C).ok_or(KernelImageError::InvalidHeaderLength)?)
+        } else {
+            None
+        };
+
+        let setup_data = if protocol_version.at_least(2, 9) {
+            Some(read_u64(image, 0x250).ok_or(KernelImageError::InvalidHeaderLength)?)
         } else {
             None
         };
@@ -346,8 +370,11 @@ impl SetupHeader {
             min_alignment,
             xload_flags,
             cmdline_size,
+            hardware_subarch,
+            hardware_subarch_data,
             payload_offset,
             payload_length,
+            setup_data,
             pref_address,
             init_size,
             handover_offset,
@@ -411,12 +438,24 @@ impl SetupHeader {
         self.cmdline_size
     }
 
+    pub const fn hardware_subarch(&self) -> Option<u32> {
+        self.hardware_subarch
+    }
+
+    pub const fn hardware_subarch_data(&self) -> Option<u64> {
+        self.hardware_subarch_data
+    }
+
     pub const fn payload_offset(&self) -> Option<u32> {
         self.payload_offset
     }
 
     pub const fn payload_length(&self) -> Option<u32> {
         self.payload_length
+    }
+
+    pub const fn setup_data(&self) -> Option<u64> {
+        self.setup_data
     }
 
     pub const fn pref_address(&self) -> Option<u64> {

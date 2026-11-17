@@ -6,7 +6,8 @@ use uefi::{Status, boot, helpers, proto::console::text::Input, system};
 
 use crate::{
     boot::{
-        BootConfig, BootManager, BootTarget, LinuxKernelImage, LinuxNativeTarget, StorageManager,
+        BootConfig, BootManager, BootParams, BootParamsBuilder, BootTarget, KernelCommandLine,
+        LinuxKernelImage, LinuxNativeTarget, StorageManager,
     },
     firmware,
     graphics::{Color, FrameBuffer, Rect, Renderer},
@@ -304,12 +305,41 @@ fn inspect_native_kernel(storage: &mut StorageManager, target: &LinuxNativeTarge
 
     let version = header.protocol_version();
 
+    let command_line = match KernelCommandLine::new(target.command_line(), header) {
+        Ok(command_line) => command_line,
+
+        Err(error) => {
+            return format!("Command line validation failed: {:?}", error,);
+        }
+    };
+
+    let boot_params = match BootParamsBuilder::new(&kernel_bytes, header) {
+        Ok(builder) => builder.build(),
+
+        Err(error) => {
+            return format!("Boot Params initialization failed: {:?}", error,);
+        }
+    };
+
+    if boot_params.sentinel() != 0 {
+        return String::from("Boot Params sentinel is invalid.");
+    }
+
+    if boot_params.boot_signature() != 0xAA55 {
+        return String::from("Boot Params header signature mismatch.");
+    }
+
+    if boot_params.protocol_version() != version.raw() {
+        return String::from("Boot Params protocol version mismatch.");
+    }
+
     format!(
-        "Kernel OK: {:?}, x86_64, protocol {}.{}, payload {:?}",
-        header.image_kind(),
+        "KERNEL OK: BZIMAGE X64 P{}.{} {:?} | BP={} CMD={} E820=PENDING",
         version.major(),
         version.minor(),
         image.payload_format(),
+        BootParams::SIZE,
+        command_line.len(),
     )
 }
 
@@ -406,17 +436,23 @@ fn handle_input_event(
     Ok(())
 }
 
+#[derive(Debug)]
+enum InputLoopFailure {
+    Keyboard(Status),
+    Ui { event: InputEvent, status: Status },
+}
+
 fn run_input_loop(
     input: &mut Input,
     ui: &mut BootUi,
     renderer: &mut Renderer<'_, '_>,
     layout: &LayoutResult<UI_CAPACITY>,
-) -> Status {
+) -> Result<(), InputLoopFailure> {
     loop {
         match read_event(input) {
             Ok(Some(event)) => {
                 if let Err(status) = handle_input_event(event, ui, renderer, layout) {
-                    return status;
+                    return Err(InputLoopFailure::Ui { event, status });
                 }
             }
 
@@ -425,7 +461,7 @@ fn run_input_loop(
             }
 
             Err(error) => {
-                return error.status();
+                return Err(InputLoopFailure::Keyboard(error.status()));
             }
         }
     }
@@ -545,9 +581,21 @@ pub fn run() -> Status {
 
     drop(runtime_state);
 
-    if input_status != Status::SUCCESS {
-        report_error("Keyboard input failed.", input_status);
-    }
+    match input_status {
+        Ok(()) => Status::SUCCESS,
 
-    input_status
+        Err(InputLoopFailure::Keyboard(status)) => {
+            report_error("UEFI keyboard protocol failed.", status);
+
+            status
+        }
+
+        Err(InputLoopFailure::Ui { event, status }) => {
+            let message = format!("Boot UI failed while handling {:?}.", event,);
+
+            report_error(&message, status);
+
+            status
+        }
+    }
 }

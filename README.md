@@ -1,19 +1,18 @@
-
 # SIOS Bootloader
 
-<p align="center">
-  <strong>A modern UEFI bootloader written entirely in Rust.</strong>
-  <br>
-  <em>Built from the ground up with a custom graphics renderer, declarative UI engine, storage subsystem, EFI image loader, and native Linux boot infrastructure.</em>
-</p>
+\<p align="center">
+&#x20; \<strong>A modern UEFI bootloader written entirely in Rust.\</strong>
+&#x20; \<br>
+&#x20; \<em>Built from the ground up with a custom graphics renderer, declarative UI engine, storage subsystem, EFI image loader, and native Linux boot infrastructure.\</em>
+\</p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Language-Rust-orange?style=for-the-badge&logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/Firmware-UEFI-blue?style=for-the-badge" alt="UEFI">
-  <img src="https://img.shields.io/badge/Architecture-x86__64-informational?style=for-the-badge" alt="x86_64">
-  <img src="https://img.shields.io/badge/Environment-no__std-purple?style=for-the-badge" alt="no_std">
-  <img src="https://img.shields.io/badge/Status-Active%20Development-yellow?style=for-the-badge" alt="Active Development">
-</p>
+\<p align="center">
+&#x20; \<img src="[https://img.shields.io/badge/Language-Rust-orange?style=for-the-badge&logo=rust](https://img.shields.io/badge/Language-Rust-orange?style=for-the-badge\&logo=rust)" alt="Rust">
+&#x20; \<img src="[https://img.shields.io/badge/Firmware-UEFI-blue?style=for-the-badge](https://img.shields.io/badge/Firmware-UEFI-blue?style=for-the-badge)" alt="UEFI">
+&#x20; \<img src="[https://img.shields.io/badge/Architecture-x86__64-informational?style=for-the-badge](https://img.shields.io/badge/Architecture-x86__64-informational?style=for-the-badge)" alt="x86_64">
+&#x20; \<img src="[https://img.shields.io/badge/Environment-no__std-purple?style=for-the-badge](https://img.shields.io/badge/Environment-no__std-purple?style=for-the-badge)" alt="no_std">
+&#x20; \<img src="[https://img.shields.io/badge/Status-Active%20Development-yellow?style=for-the-badge](https://img.shields.io/badge/Status-Active%20Development-yellow?style=for-the-badge)" alt="Active Development">
+\</p>
 
 ---
 
@@ -73,11 +72,25 @@ The implementation is located under `boot/x86_64/linux/`, separating Linux-speci
 
 - x86_64-specific Linux boot subsystem.
 - Linux kernel image representation.
-- Kernel image header parsing.
+- Linux kernel header parsing.
 - Structured parsing errors.
-- Foundation for Linux Boot Protocol implementation and native kernel loading.
+- Kernel image metadata extraction.
+- Foundation for native Linux kernel loading.
 
-The parser is implemented and serves as the first completed component of the native Linux boot pipeline.
+### Linux Boot Protocol
+
+SIOS Bootloader includes the initial implementation of the Linux Boot Protocol infrastructure for x86_64.
+
+This subsystem provides the structures and interfaces required to prepare Linux kernel boot parameters.
+
+- Linux Boot Protocol structures.
+- `boot_params` representation.
+- Linux boot header integration.
+- Kernel command-line support.
+- Boot protocol module organization.
+- Architecture-specific boot infrastructure.
+
+This subsystem builds upon the Linux kernel image parser and establishes the foundation for subsequent native kernel loading stages.
 
 ### Graphics Engine
 
@@ -172,10 +185,13 @@ src/
 │   └── x86_64/
 │       ├── mod.rs
 │       └── linux/
+│           ├── boot_params.rs
+│           ├── command_line.rs
 │           ├── error.rs
 │           ├── header.rs
 │           ├── image.rs
-│           └── mod.rs
+│           ├── mod.rs
+│           └── protocol.rs
 │
 ├── firmware/
 │   ├── mod.rs
@@ -237,9 +253,13 @@ Contains functionality specific to the x86_64 architecture.
 
 Contains the Linux-specific boot implementation for x86_64.
 
+The Linux subsystem includes separate modules for kernel image parsing, Linux Boot Protocol structures, boot parameters, and command-line handling.
+
 This separation allows architecture-specific boot functionality to evolve independently without introducing unnecessary dependencies into the general boot management infrastructure.
 
 The architecture is designed to accommodate additional platform-specific implementations in the future.
+
+---
 
 ## Design Philosophy
 
@@ -279,20 +299,20 @@ This allows platform-dependent functionality, such as Linux kernel loading, to b
 
 ## Technology Stack
 
-| Component | Technology |
-|---|---|
-| Programming language | Rust |
-| Rust edition | 2024 |
-| Firmware interface | UEFI |
-| UEFI crate | `uefi` 0.35 |
-| Runtime | `no_std` |
-| Graphics | Custom software renderer |
-| UI | Custom UI engine |
-| Storage | UEFI protocols |
-| Partition scheme | GPT |
-| Input | UEFI keyboard |
-| Target architecture | x86_64 |
-| Linux support | Linux kernel image parsing |
+| Component            | Technology                                      |
+| -------------------- | ----------------------------------------------- |
+| Programming language | Rust                                            |
+| Rust edition         | 2024                                            |
+| Firmware interface   | UEFI                                            |
+| UEFI crate           | `uefi` 0.35                                     |
+| Runtime              | `no_std`                                        |
+| Graphics             | Custom software renderer                        |
+| UI                   | Custom UI engine                                |
+| Storage              | UEFI protocols                                  |
+| Partition scheme     | GPT                                             |
+| Input                | UEFI keyboard                                   |
+| Target architecture  | x86_64                                          |
+| Linux support        | Kernel parsing and Boot Protocol infrastructure |
 
 ## Development Status
 
@@ -300,33 +320,36 @@ SIOS Bootloader is under active development.
 
 The following table distinguishes existing implementations from planned functionality.
 
-| Component | Status |
-|---|---|
-| UEFI application entry point | Implemented |
-| UEFI runtime initialization | Implemented |
-| Storage discovery | Implemented |
-| Block I/O abstraction | Implemented |
-| Filesystem volume discovery | Implemented |
-| GPT parsing | Implemented |
-| Device Path parsing | Implemented |
-| EFI image loading | Implemented |
-| EFI chainloading | Implemented |
+| Component                          | Status      |
+| ---------------------------------- | ----------- |
+| UEFI application entry point       | Implemented |
+| UEFI runtime initialization        | Implemented |
+| Storage discovery                  | Implemented |
+| Block I/O abstraction              | Implemented |
+| Filesystem volume discovery        | Implemented |
+| GPT parsing                        | Implemented |
+| Device Path parsing                | Implemented |
+| EFI image loading                  | Implemented |
+| EFI chainloading                   | Implemented |
 | Linux kernel image parser (x86_64) | Implemented |
-| Custom framebuffer renderer | Implemented |
-| Graphics and text rendering | Implemented |
-| UI tree | Implemented |
-| Layout engine | Implemented |
-| Widget system | Implemented |
-| Keyboard navigation | Implemented |
-| Dirty-region rendering | Implemented |
-| Linux Boot Protocol | Planned |
-| Physical memory allocator | Planned |
-| Kernel physical memory placement | Planned |
-| Initrd loading | Planned |
-| UEFI Memory Map to E820 | Planned |
-| Page table construction | Planned |
-| ExitBootServices integration | Planned |
-| Native Linux kernel handoff | Planned |
+| Linux Boot Protocol infrastructure | Implemented |
+| Linux `boot_params` structures     | Implemented |
+| Kernel command-line infrastructure | Implemented |
+| Custom framebuffer renderer        | Implemented |
+| Graphics and text rendering        | Implemented |
+| UI tree                            | Implemented |
+| Layout engine                      | Implemented |
+| Widget system                      | Implemented |
+| Keyboard navigation                | Implemented |
+| Dirty-region rendering             | Implemented |
+| Physical memory allocator          | Planned     |
+| Kernel physical memory placement   | Planned     |
+| Initrd loading and placement       | Planned     |
+| UEFI Memory Map processing         | Planned     |
+| E820 memory map generation         | Planned     |
+| Page table construction            | Planned     |
+| UEFI ExitBootServices integration  | Planned     |
+| Native Linux kernel handoff        | Planned     |
 
 *Implementation status refers to the current development snapshot and does not imply production readiness.*
 
@@ -362,16 +385,17 @@ The long-term goal is to turn SIOS Bootloader into a complete native boot enviro
 ### Phase 3 - Native Linux Boot (x86_64)
 
 - [x] Linux kernel image parsing
-- [ ] Linux boot protocol implementation
+- [x] Linux Boot Protocol infrastructure
+- [x] Linux `boot_params` structures
+- [x] Kernel command-line infrastructure
 - [ ] Physical page allocator
 - [ ] Kernel physical memory placement
-- [ ] Initrd loading
-- [ ] Kernel command-line support
+- [ ] Initrd loading and placement
 - [ ] UEFI Memory Map processing
 - [ ] E820 memory map generation
 - [ ] x86_64 page table construction
 - [ ] UEFI ExitBootServices integration
-- [ ] Native kernel handoff
+- [ ] Native Linux kernel handoff
 
 ### Phase 4 - Advanced Boot Environment
 
@@ -442,10 +466,4 @@ License information will be added when the project license is finalized.
 
 ---
 
-<p align="center">
-  <strong>SIOS Bootloader</strong>
-  <br>
-  <em>Built from the firmware up.</em>
-  <br><br>
-  Copyright 2026 SIOS Corporation
-</p>
+\<p align="center">   \<strong>SIOS Bootloader\</strong>   \<br>   \<em>Built from the firmware up.\</em>   \<br>\<br>   Copyright 2026 SIOS Corporation \</p>

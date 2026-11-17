@@ -53,7 +53,7 @@ impl BootConfig {
             BootEntryId::new(1),
             "SIOS Linux",
             BootTarget::EfiChainload(EfiTarget::new(
-                BootPath::new("\\EFI\\SIOS\\sios-linux.efi")?,
+                BootPath::new("\\EFI\\BOOT\\BOOTX64.EFI")?,
                 None,
             )?),
         )?);
