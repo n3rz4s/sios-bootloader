@@ -29,3 +29,10 @@ pub use x86_64::linux::{
     EfiBootInfo, KernelCommandLine, KernelCommandLineError, KernelImageError, KernelPayloadFormat,
     LinuxImageKind, LinuxKernelImage, SecureBootMode, SetupHeader,
 };
+
+pub use x86_64::PhysicalAddress;
+
+pub use x86_64::memory::{
+    AllocationRequest, AllocationStrategy, MemoryError, MemoryRegion, MemoryRegionKind, PAGE_SIZE,
+    PhysicalPageAllocator, PhysicalRange,
+};
