@@ -778,4 +778,76 @@ mod tests {
             Some(MemoryError::InvalidPageCount),
         );
     }
+
+    #[test]
+    fn allocation_failure_does_not_modify_allocator_state() {
+        let mut allocator = allocator();
+
+        let free_before = allocator.free_pages();
+
+        let allocated_before = allocator.allocated_pages();
+
+        let ranges_before = allocator.free_range_count();
+
+        let result = allocator.allocate(AllocationRequest::new(100));
+
+        assert!(matches!(result, Err(MemoryError::NoSuitableMemory),),);
+
+        assert_eq!(allocator.free_pages(), free_before,);
+
+        assert_eq!(allocator.allocated_pages(), allocated_before,);
+
+        assert_eq!(allocator.free_range_count(), ranges_before,);
+
+        assert_eq!(allocator.allocation_count(), 0,);
+    }
+
+    #[test]
+    fn repeated_allocations_never_overlap_and_merge_after_free() {
+        use alloc::vec::Vec;
+
+        let regions = vec![
+            MemoryRegion::new(
+                PhysicalAddress::new(PAGE_SIZE),
+                PAGE_SIZE * 16,
+                MemoryRegionKind::Usable,
+            )
+            .unwrap(),
+        ];
+
+        let mut allocator = PhysicalPageAllocator::new(&regions).unwrap();
+
+        let mut allocations = Vec::new();
+
+        for index in 0..16 {
+            let allocation = allocator.allocate(AllocationRequest::new(1)).unwrap();
+
+            assert_eq!(allocation.base_address().as_u64(), PAGE_SIZE * (index + 1),);
+
+            allocations.push(allocation);
+        }
+
+        assert_eq!(allocator.free_pages(), 0,);
+
+        assert_eq!(allocator.allocated_pages(), 16,);
+
+        assert_eq!(allocator.allocation_count(), 16,);
+
+        assert!(matches!(
+            allocator.allocate(AllocationRequest::new(1)),
+            Err(MemoryError::NoSuitableMemory),
+        ),);
+
+        for allocation in allocations.into_iter().rev() {
+            allocator.free(allocation).unwrap();
+        }
+
+        assert_eq!(allocator.free_pages(), 16,);
+
+        assert_eq!(allocator.allocated_pages(), 0,);
+
+        assert_eq!(allocator.allocation_count(), 0,);
+
+        assert_eq!(allocator.free_range_count(), 1,);
+    }
 }

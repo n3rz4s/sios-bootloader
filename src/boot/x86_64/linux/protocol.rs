@@ -17,6 +17,10 @@ pub const RAMDISK_SIZE_OFFSET: usize = 0x21C;
 
 pub const CMD_LINE_PTR_OFFSET: usize = 0x228;
 
+pub const CODE32_START_OFFSET: usize = 0x214;
+
+pub const KERNEL_ALIGNMENT_OFFSET: usize = 0x230;
+
 pub const INITRD_ADDR_MAX_OFFSET: usize = 0x22C;
 
 pub const EXT_RAMDISK_IMAGE_OFFSET: usize = 0x0C0;

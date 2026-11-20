@@ -289,7 +289,11 @@ fn inspect_native_kernel(storage: &mut StorageManager, target: &LinuxNativeTarge
         }
     };
 
-    let image = match LinuxKernelImage::parse(&kernel_bytes) {
+    inspect_native_kernel_image(&kernel_bytes, target.command_line())
+}
+
+fn inspect_native_kernel_image(kernel_bytes: &[u8], command_line_value: &str) -> String {
+    let image = match LinuxKernelImage::parse(kernel_bytes) {
         Ok(image) => image,
 
         Err(error) => {
@@ -298,14 +302,13 @@ fn inspect_native_kernel(storage: &mut StorageManager, target: &LinuxNativeTarge
     };
 
     if let Err(error) = image.validate_native_x86_64() {
-        return format!("Unsupported Linux kernel: {:?}", error,);
+        return format!("Unsupported Linux Kernel: {:?}", error,);
     }
 
     let header = image.header();
-
     let version = header.protocol_version();
 
-    let command_line = match KernelCommandLine::new(target.command_line(), header) {
+    let command_line = match KernelCommandLine::new(command_line_value, header) {
         Ok(command_line) => command_line,
 
         Err(error) => {
@@ -313,7 +316,7 @@ fn inspect_native_kernel(storage: &mut StorageManager, target: &LinuxNativeTarge
         }
     };
 
-    let boot_params = match BootParamsBuilder::new(&kernel_bytes, header) {
+    let boot_params = match BootParamsBuilder::new(kernel_bytes, header) {
         Ok(builder) => builder.build(),
 
         Err(error) => {
@@ -597,5 +600,142 @@ pub fn run() -> Status {
 
             status
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+    use alloc::vec::Vec;
+
+    use super::*;
+
+    use crate::boot::{
+        KernelPlacement, MemoryRegion, MemoryRegionKind, PhysicalAddress, PhysicalPageAllocator,
+    };
+
+    fn put_u16(image: &mut [u8], offset: usize, value: u16) {
+        image[offset..offset + 2].copy_from_slice(&value.to_le_bytes())
+    }
+
+    fn put_u32(image: &mut [u8], offset: usize, value: u32) {
+        image[offset..offset + 4].copy_from_slice(&value.to_le_bytes())
+    }
+
+    fn put_u64(image: &mut [u8], offset: usize, value: u64) {
+        image[offset..offset + 8].copy_from_slice(&value.to_le_bytes())
+    }
+
+    fn make_kernel(command_line_size: u32) -> Vec<u8> {
+        let mut image = vec![0u8; 4096];
+
+        image[0x1F1] = 1;
+
+        put_u32(&mut image, 0x1F4, 64);
+        put_u16(&mut image, 0x1FE, 0xAA55);
+
+        image[0x200] = 0xEB;
+        image[0x201] = 0x6A;
+
+        image[0x202..0x206].copy_from_slice(b"HdrS");
+
+        put_u16(&mut image, 0x206, 0x020F);
+
+        image[0x211] = 1;
+
+        put_u32(&mut image, 0x22C, u32::MAX);
+        put_u32(&mut image, 0x230, 0x200000);
+
+        image[0x234] = 1;
+        image[0x235] = 12;
+
+        put_u16(&mut image, 0x236, 0x0003);
+
+        put_u32(&mut image, 0x238, command_line_size);
+        put_u32(&mut image, 0x248, 0);
+        put_u32(&mut image, 0x24C, 0);
+
+        put_u64(&mut image, 0x258, 0x2000000);
+
+        put_u32(&mut image, 0x260, 0x400000);
+
+        image
+    }
+
+    #[test]
+    fn runtime_accepts_valid_native_kernel() {
+        let image = make_kernel(2047);
+
+        let result = inspect_native_kernel_image(&image, "quiet");
+
+        assert!(result.starts_with("KERNEL OK: BZIMAGE X64 P2.15"),);
+
+        assert!(result.contains("BP=4096"),);
+
+        assert!(result.contains("CMD=5"),);
+    }
+
+    #[test]
+    fn runtime_rejects_invalid_kernel_image() {
+        let image = vec![0u8; 4096];
+
+        let result = inspect_native_kernel_image(&image, "quiet");
+
+        assert!(result.starts_with("Kernel parse failed:"),);
+    }
+
+    #[test]
+    fn runtime_rejects_command_line_exceeding_kernel_limit() {
+        let image = make_kernel(4);
+
+        let result = inspect_native_kernel_image(&image, "quiet");
+
+        assert_eq!(result, "Command line validation failed: TooLong",);
+    }
+
+    #[test]
+    fn runtime_kernel_placement_integrates_allocator_and_zero_page() {
+        let image = make_kernel(2047);
+
+        let parsed_image = LinuxKernelImage::parse(&image).unwrap();
+
+        parsed_image.validate_native_x86_64().unwrap();
+
+        let header = parsed_image.header();
+
+        let regions = [MemoryRegion::new(
+            PhysicalAddress::new(0x1000000),
+            0x4000000,
+            MemoryRegionKind::Usable,
+        )
+        .unwrap()];
+
+        let mut allocator = PhysicalPageAllocator::new(&regions).unwrap();
+
+        let placement = KernelPlacement::allocate(&image, &header, &mut allocator).unwrap();
+
+        assert_eq!(placement.load_address().as_u64(), 0x2000000,);
+
+        let mut builder = BootParamsBuilder::new(&image, &header).unwrap();
+
+        builder
+            .set_kernel_placement(placement.load_address(), placement.alignment() as u32)
+            .unwrap();
+
+        let boot_params = builder.build();
+
+        assert_eq!(boot_params.code32_start(), placement.load_address().low32(),);
+
+        assert_eq!(boot_params.kernel_alignment(), placement.alignment() as u32,);
+
+        let mut destination = vec![0xAA; placement.allocation_size() as usize];
+
+        placement.copy_into(&image, &mut destination).unwrap();
+
+        assert_eq!(&destination[..1024], &image[1024..2048],);
+
+        assert!(destination[1024..].iter().all(|byte| *byte == 0),);
+
+        assert_eq!(allocator.allocation_count(), 1,);
     }
 }

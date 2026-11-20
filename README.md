@@ -95,6 +95,37 @@ This subsystem provides the structures and interfaces required to prepare Linux 
 
 This subsystem builds upon the Linux kernel image parser and establishes the foundation for subsequent native kernel loading stages.
 
+### Kernel Physical Placement
+
+SIOS Bootloader includes a kernel placement subsystem for preparing a parsed x86_64 Linux `bzImage` for loading into physical memory.
+
+The implementation is located in `boot/x86_64/linux/kernel_placement.rs` and uses the physical page allocator to select and reserve a suitable destination range.
+
+Current capabilities:
+
+- Validation of the supplied setup header against the kernel image.
+- Validation of the Linux image type, boot protocol version, and 64-bit support.
+- Support for relocatable and non-relocatable kernels.
+- Preferred physical load address handling through `pref_address`.
+- Kernel alignment handling through `kernel_alignment` and `min_alignment`.
+- Fallback placement at or above the preferred address for relocatable kernels.
+- Exact-address allocation for non-relocatable kernels.
+- Kernel memory sizing using `init_size`.
+- Protected kernel image size handling using `syssize`.
+- Page-aligned physical allocation through `PhysicalPageAllocator`.
+- Above-4-GiB placement when supported by the kernel header.
+- Below-4-GiB address restriction when above-4-GiB loading is unsupported.
+- Kernel entry point calculation.
+- Copying the protected kernel image into a destination buffer and zero-filling the remaining allocation.
+- Explicit release of the placement allocation.
+- Structured placement and memory allocation errors.
+
+The `KernelPlacement` result retains the allocation and exposes the selected load address, runtime start, preferred address, memory size, alignment, page count, and allocation size.
+
+It also provides access to the calculated entry point and a method for copying the kernel image into a caller-provided destination buffer.
+
+This subsystem prepares the kernel's physical memory placement. It does not yet perform the complete native Linux handoff or initrd placement.
+
 ### Physical Memory Management
 
 SIOS Bootloader includes an architecture-specific physical memory management subsystem for x86_64.
@@ -127,7 +158,7 @@ It maintains separate collections for free physical ranges and active allocation
 
 The allocator supports configurable allocation requests through `AllocationRequest`, allowing the caller to specify page count, alignment, address boundaries, and allocation strategy.
 
-This implementation establishes the foundation for subsequent kernel physical placement and initrd memory allocation.
+This implementation establishes the foundation for kernel physical placement and initrd memory allocation.
 
 ### Graphics Engine
 
@@ -229,6 +260,7 @@ src/
 │       │   ├── error.rs
 │       │   ├── header.rs
 │       │   ├── image.rs
+│       │   ├── kernel_placement.rs
 │       │   ├── mod.rs
 │       │   └── protocol.rs
 │       │
@@ -305,7 +337,20 @@ The Linux subsystem includes separate modules for:
 - Linux Boot Protocol structures.
 - Boot parameter representation.
 - Kernel command-line handling.
+- Kernel physical placement.
+- Relocatable and fixed-address kernel allocation.
+- Kernel image copying into the selected destination.
 - Protocol-related error handling.
+
+**`boot/x86_64/linux/kernel_placement.rs`**
+
+Implements physical placement for x86_64 Linux `bzImage` kernels.
+
+The placement subsystem validates kernel metadata, determines the required memory size, and obtains a suitable physical allocation from `PhysicalPageAllocator`.
+
+Relocatable kernels may be placed at or above their preferred address while respecting the alignment constraints in the setup header. Non-relocatable kernels must be allocated at their exact preferred address.
+
+The resulting `KernelPlacement` provides the selected load address, runtime start, entry point, allocation information, image-copy operation, and explicit release operation.
 
 **`boot/x86_64/memory/`**
 
@@ -331,6 +376,13 @@ The subsystem exposes the following primary types:
 | `PhysicalRange` | Represents a physical memory address range. |
 | `MemoryError` | Provides structured memory management errors. |
 
+The Linux kernel placement subsystem exposes:
+
+| Type | Responsibility |
+|---|---|
+| `KernelPlacement` | Represents a kernel's selected physical memory placement and owns its allocation. |
+| `KernelPlacementError` | Provides structured errors for kernel placement and image-copy operations. |
+
 The allocator supports:
 
 - Allocation of contiguous physical pages.
@@ -343,6 +395,16 @@ The allocator supports:
 - Automatic merging of adjacent free ranges.
 
 The default physical page size is 4096 bytes (4 KiB).
+
+Kernel placement uses this allocator to reserve a page-aligned range large enough for the kernel's `init_size`.
+
+For relocatable kernels, the placement logic attempts the preferred address first and can fall back to a suitable address above it while reducing alignment down to the minimum alignment declared by the kernel.
+
+For non-relocatable kernels, the preferred address must be available.
+
+The placement logic also checks the kernel header's above-4-GiB capability before allowing an allocation beyond the 4-GiB boundary.
+
+The protected kernel image is copied from the image's payload area; the rest of the allocated destination range is zero-filled.
 
 This separation allows architecture-specific memory management to evolve independently from the general boot infrastructure.
 
@@ -413,7 +475,7 @@ This design provides a foundation for deterministic physical memory placement du
 | Memory management | Custom physical page allocator |
 | Physical page size | 4 KiB |
 | Target architecture | x86_64 |
-| Linux support | Kernel parsing and Boot Protocol infrastructure |
+| Linux support | Kernel parsing, Boot Protocol infrastructure, and physical kernel placement |
 
 ## Development Status
 
@@ -450,7 +512,7 @@ The following table distinguishes existing implementations from planned function
 | Widget system | Implemented |
 | Keyboard navigation | Implemented |
 | Dirty-region rendering | Implemented |
-| Kernel physical memory placement | Planned |
+| Kernel physical memory placement | Implemented |
 | Initrd loading and placement | Planned |
 | UEFI Memory Map processing | Planned |
 | E820 memory map generation | Planned |
@@ -500,7 +562,7 @@ The long-term goal is to turn SIOS Bootloader into a complete native boot enviro
 - [x] Physical page allocator
 - [x] Physical memory range reservation
 - [x] Physical page deallocation
-- [ ] Kernel physical memory placement
+- [x] Kernel physical memory placement
 - [ ] Initrd loading and placement
 - [ ] UEFI Memory Map processing
 - [ ] E820 memory map generation

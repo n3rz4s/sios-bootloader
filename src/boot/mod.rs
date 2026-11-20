@@ -27,7 +27,8 @@ pub use efi::{EfiLoadError, EfiLoadResult, EfiLoadStage, chainload};
 pub use x86_64::linux::{
     BootParams, BootParamsBuilder, BootParamsError, BootProtocolVersion, E820Entry, E820MemoryType,
     EfiBootInfo, KernelCommandLine, KernelCommandLineError, KernelImageError, KernelPayloadFormat,
-    LinuxImageKind, LinuxKernelImage, SecureBootMode, SetupHeader,
+    KernelPlacement, KernelPlacementError, LinuxImageKind, LinuxKernelImage, SecureBootMode,
+    SetupHeader,
 };
 
 pub use x86_64::PhysicalAddress;

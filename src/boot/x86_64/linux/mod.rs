@@ -3,9 +3,12 @@ pub mod command_line;
 pub mod error;
 pub mod header;
 pub mod image;
+pub mod kernel_placement;
 pub mod protocol;
 
 pub use boot_params::{BootParams, BootParamsBuilder, BootParamsError, E820Entry, EfiBootInfo};
+
+pub use kernel_placement::{KernelPlacement, KernelPlacementError};
 
 pub use command_line::{KernelCommandLine, KernelCommandLineError};
 

@@ -1,4 +1,4 @@
-use crate::boot::x86_64::PhysicalAddress;
+use crate::boot::x86_64::{PhysicalAddress, memory::PAGE_SIZE};
 
 use super::{
     error::KernelImageError,
@@ -45,6 +45,8 @@ pub enum BootParamsError {
     MissingMemoryMap,
 
     InvalidSentinel,
+
+    InvalidKernelAlignment,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -174,6 +176,14 @@ impl BootParams {
         (high << 32) | low
     }
 
+    pub fn code32_start(&self) -> u32 {
+        read_u32(&self.bytes, CODE32_START_OFFSET)
+    }
+
+    pub fn kernel_alignment(&self) -> u32 {
+        read_u32(&self.bytes, KERNEL_ALIGNMENT_OFFSET)
+    }
+
     pub fn protocol_version(&self) -> u16 {
         read_u16(&self.bytes, 0x206)
     }
@@ -290,6 +300,41 @@ impl BootParamsBuilder {
 
     pub fn set_video_mode(&mut self, mode: u16) {
         self.params.write_u16(VIDEO_MODE_OFFSET, mode);
+    }
+
+    pub fn set_kernel_placement(
+        &mut self,
+        load_address: PhysicalAddress,
+        kernel_alignment: u32,
+    ) -> Result<(), BootParamsError> {
+        if !self.header.protocol_version().at_least(2, 10) {
+            return Err(BootParamsError::UnsupportedProtocol);
+        }
+
+        if load_address.is_null() {
+            return Err(BootParamsError::InvalidPhysicalAddress);
+        }
+
+        if load_address.is_above_4g() && !self.header.supports_above_4g() {
+            return Err(BootParamsError::AddressAbove4GUnsupported);
+        }
+
+        if kernel_alignment < PAGE_SIZE as u32
+            || !kernel_alignment.is_power_of_two()
+            || load_address.as_u64() % kernel_alignment as u64 != 0
+        {
+            return Err(BootParamsError::InvalidKernelAlignment);
+        }
+
+        if !load_address.is_above_4g() {
+            self.params
+                .write_u32(CODE32_START_OFFSET, load_address.low32());
+        }
+
+        self.params
+            .write_u32(KERNEL_ALIGNMENT_OFFSET, kernel_alignment);
+
+        Ok(())
     }
 
     pub fn set_command_line_address(
@@ -675,6 +720,69 @@ mod tests {
         assert_eq!(
             builder.set_e820_entries(&entries),
             Err(BootParamsError::E820EntriesOverlap),
+        );
+    }
+
+    #[test]
+    fn kernel_placement_fields_are_serialized() {
+        let image = make_kernel();
+
+        let header = SetupHeader::parse(&image).unwrap();
+
+        let mut builder = BootParamsBuilder::new(&image, &header).unwrap();
+
+        builder
+            .set_kernel_placement(PhysicalAddress::new(0x2200000), 0x1000)
+            .unwrap();
+
+        let params = builder.build();
+
+        assert_eq!(params.code32_start(), 0x2200000);
+
+        assert_eq!(params.kernel_alignment(), 0x1000);
+    }
+
+    #[test]
+    fn kernel_placement_rejects_non_power_of_two_alignment() {
+        let image = make_kernel();
+
+        let header = SetupHeader::parse(&image).unwrap();
+
+        let mut builder = BootParamsBuilder::new(&image, &header).unwrap();
+
+        assert_eq!(
+            builder.set_kernel_placement(PhysicalAddress::new(0x2200000), 0x3000,),
+            Err(BootParamsError::InvalidKernelAlignment),
+        );
+    }
+
+    #[test]
+    fn kernel_placement_rejects_unaligned_address() {
+        let image = make_kernel();
+
+        let header = SetupHeader::parse(&image).unwrap();
+
+        let mut builder = BootParamsBuilder::new(&image, &header).unwrap();
+
+        assert_eq!(
+            builder.set_kernel_placement(PhysicalAddress::new(0x2201000), 0x200000,),
+            Err(BootParamsError::InvalidKernelAlignment),
+        );
+    }
+
+    #[test]
+    fn kernel_placement_above_4g_requires_xload_flag() {
+        let mut image = make_kernel();
+
+        put_u16(&mut image, 0x236, XLF_KERNEL_64);
+
+        let header = SetupHeader::parse(&image).unwrap();
+
+        let mut builder = BootParamsBuilder::new(&image, &header).unwrap();
+
+        assert_eq!(
+            builder.set_kernel_placement(PhysicalAddress::new(0x1_0000_0000), 0x1000,),
+            Err(BootParamsError::AddressAbove4GUnsupported),
         );
     }
 }
